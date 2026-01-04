@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use hickory_proto::op::Query;
-use hickory_proto::rr::{DNSClass, Name, RecordType};
+use hickory_proto::rr::{Name, RecordType};
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::time::Duration;

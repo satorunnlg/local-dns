@@ -1,7 +1,11 @@
 pub mod models;
 
 use anyhow::{Context, Result};
-use sqlx::{sqlite::SqlitePoolOptions, Pool, Sqlite};
+use sqlx::{
+    sqlite::{SqliteConnectOptions, SqlitePoolOptions},
+    Pool, Sqlite,
+};
+use std::str::FromStr;
 use std::time::Duration;
 use tracing::{info, warn};
 
@@ -45,10 +49,15 @@ pub async fn init_db(database_url: &str) -> Result<DbPool> {
 
 /// データベース接続を試行
 async fn try_connect(database_url: &str) -> Result<DbPool> {
+    // SQLite接続オプション設定（ファイルが存在しない場合は作成）
+    let connect_options = SqliteConnectOptions::from_str(database_url)
+        .context("データベースURL解析に失敗")?
+        .create_if_missing(true);
+
     // 接続プール作成
     let pool = SqlitePoolOptions::new()
         .max_connections(5)
-        .connect(database_url)
+        .connect_with(connect_options)
         .await
         .context("データベース接続プール作成に失敗")?;
 
@@ -228,7 +237,8 @@ pub async fn get_recent_logs(pool: &DbPool, limit: i64) -> Result<Vec<QueryLog>>
     Ok(logs)
 }
 
-/// 古いログを削除
+/// 古いログを削除（将来の定期実行用）
+#[allow(dead_code)]
 pub async fn cleanup_old_logs(pool: &DbPool, retention_days: i64) -> Result<u64> {
     let result = sqlx::query(
         "DELETE FROM query_logs WHERE timestamp < datetime('now', '-' || ? || ' days')"

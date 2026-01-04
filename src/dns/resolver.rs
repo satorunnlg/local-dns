@@ -81,7 +81,8 @@ pub fn build_dns_record(
     }
 }
 
-/// RecordTypeを文字列に変換
+/// RecordTypeを文字列に変換（将来のロギング拡張用）
+#[allow(dead_code)]
 pub fn record_type_to_string(rt: RecordType) -> String {
     match rt {
         RecordType::A => "A".to_string(),

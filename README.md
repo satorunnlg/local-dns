@@ -39,15 +39,25 @@ cd ..
 
 ### 2. 開発モード
 
-**バックエンド (Rust)**
+**ワンコマンド起動 (推奨)**
 
-```bash
+PowerShellで以下のコマンドを実行:
+
+```powershell
+.\start-dev-simple.ps1
+```
+
+バックエンドとフロントエンドが別ウィンドウで自動起動します。
+
+**個別起動**
+
+バックエンド (Rust):
+```powershell
 cargo run
 ```
 
-**フロントエンド (React)**
-
-```bash
+フロントエンド (React) - 別のPowerShellウィンドウで:
+```powershell
 cd web-ui
 npm run dev
 ```

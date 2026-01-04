@@ -59,7 +59,8 @@ impl RecordCache {
         None
     }
 
-    /// キャッシュ内の全レコード数を取得
+    /// キャッシュ内の全レコード数を取得（将来の統計機能用）
+    #[allow(dead_code)]
     pub async fn count(&self) -> usize {
         let records = self.records.read().await;
         records.len()

@@ -45,7 +45,9 @@ impl DnsHandler {
         };
 
         let query = request_info.query;
-        let query_name = query.name().to_string();
+        let query_name_raw = query.name().to_string();
+        // 末尾のドットを削除（FQDN表記を正規化）
+        let query_name = query_name_raw.trim_end_matches('.').to_string();
         let record_type = query.query_type();
 
         debug!(
