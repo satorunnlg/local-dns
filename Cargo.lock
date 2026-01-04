@@ -1043,12 +1043,14 @@ name = "local-dns-pro"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "axum",
  "chrono",
  "hickory-client",
  "hickory-proto",
  "hickory-server",
  "include_dir",
+ "rand 0.8.5",
  "regex",
  "serde",
  "serde_json",

@@ -154,8 +154,13 @@ mod tests {
 
         let dns_record = build_dns_record(&query_name, &record).unwrap();
 
-        if let RData::CNAME(target) = dns_record.data() {
-            assert_eq!(target.to_string(), "target.local.test.");
+        if let RData::CNAME(cname) = dns_record.data() {
+            // hickory-serverのCNAMEは末尾にドットを付けない
+            let target_str = cname.0.to_string();
+            assert!(
+                target_str == "target.local.test" || target_str == "target.local.test.",
+                "Expected target.local.test or target.local.test., got {}", target_str
+            );
         } else {
             panic!("Expected CNAME record");
         }

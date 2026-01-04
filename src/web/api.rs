@@ -60,6 +60,9 @@ async fn create_record_handler(
     State(state): State<Arc<ApiState>>,
     Json(req): Json<CreateRecordRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    // バリデーション
+    validate_record(&req)?;
+
     let id = create_record(&state.pool, req).await?;
 
     // キャッシュを再読み込み
@@ -68,6 +71,71 @@ async fn create_record_handler(
     }
 
     Ok(Json(json!({ "id": id })))
+}
+
+/// レコードのバリデーション
+fn validate_record(req: &CreateRecordRequest) -> Result<(), AppError> {
+    // ドメインパターンの検証
+    if req.domain_pattern.trim().is_empty() {
+        return Err(AppError::BadRequest(
+            "ドメインパターンを指定してください".to_string(),
+        ));
+    }
+
+    // レコードタイプの検証
+    if !matches!(req.record_type.as_str(), "A" | "AAAA" | "CNAME") {
+        return Err(AppError::BadRequest(format!(
+            "サポートされていないレコードタイプです: {}",
+            req.record_type
+        )));
+    }
+
+    // コンテンツの検証
+    if req.content.trim().is_empty() {
+        return Err(AppError::BadRequest(
+            "コンテンツを指定してください".to_string(),
+        ));
+    }
+
+    // レコードタイプごとのコンテンツ検証
+    match req.record_type.as_str() {
+        "A" => {
+            use std::net::Ipv4Addr;
+            use std::str::FromStr;
+            if Ipv4Addr::from_str(&req.content).is_err() {
+                return Err(AppError::BadRequest(
+                    "無効なIPv4アドレス形式です".to_string(),
+                ));
+            }
+        }
+        "AAAA" => {
+            use std::net::Ipv6Addr;
+            use std::str::FromStr;
+            if Ipv6Addr::from_str(&req.content).is_err() {
+                return Err(AppError::BadRequest(
+                    "無効なIPv6アドレス形式です".to_string(),
+                ));
+            }
+        }
+        "CNAME" => {
+            // CNAMEは基本的な文字列チェックのみ
+            if req.content.contains(' ') {
+                return Err(AppError::BadRequest(
+                    "CNAMEに空白文字を含めることはできません".to_string(),
+                ));
+            }
+        }
+        _ => {}
+    }
+
+    // TTLの検証
+    if req.ttl < 1 || req.ttl > 86400 {
+        return Err(AppError::BadRequest(
+            "TTLは1秒から86400秒(24時間)の範囲で指定してください".to_string(),
+        ));
+    }
+
+    Ok(())
 }
 
 /// レコード更新
@@ -146,6 +214,7 @@ async fn health_check() -> Json<serde_json::Value> {
 enum AppError {
     Internal(anyhow::Error),
     NotFound,
+    BadRequest(String),
 }
 
 impl From<anyhow::Error> for AppError {
@@ -158,10 +227,20 @@ impl IntoResponse for AppError {
     fn into_response(self) -> axum::response::Response {
         let (status, message) = match self {
             AppError::Internal(e) => {
-                tracing::error!("Internal error: {}", e);
-                (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error")
+                tracing::error!("内部エラー: {:?}", e);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "内部サーバーエラーが発生しました".to_string(),
+                )
             }
-            AppError::NotFound => (StatusCode::NOT_FOUND, "Not found"),
+            AppError::NotFound => (
+                StatusCode::NOT_FOUND,
+                "リソースが見つかりません".to_string(),
+            ),
+            AppError::BadRequest(msg) => {
+                tracing::warn!("不正なリクエスト: {}", msg);
+                (StatusCode::BAD_REQUEST, msg)
+            }
         };
 
         (status, Json(json!({ "error": message }))).into_response()

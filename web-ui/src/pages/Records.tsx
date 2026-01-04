@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { recordsApi } from '../api'
-import type { CreateRecordRequest } from '../types'
+import type { CreateRecordRequest, Record } from '../types'
 
 function Records() {
   const queryClient = useQueryClient()
   const [showForm, setShowForm] = useState(false)
+  const [editingId, setEditingId] = useState<number | null>(null)
   const [formData, setFormData] = useState<CreateRecordRequest>({
     domain_pattern: '',
     record_type: 'A',
@@ -23,6 +24,18 @@ function Records() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['records'] })
       setShowForm(false)
+      setEditingId(null)
+      setFormData({ domain_pattern: '', record_type: 'A', content: '', ttl: 60 })
+    },
+  })
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Partial<Record> }) =>
+      recordsApi.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['records'] })
+      setShowForm(false)
+      setEditingId(null)
       setFormData({ domain_pattern: '', record_type: 'A', content: '', ttl: 60 })
     },
   })
@@ -44,7 +57,28 @@ function Records() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    createMutation.mutate(formData)
+    if (editingId !== null) {
+      updateMutation.mutate({ id: editingId, data: formData })
+    } else {
+      createMutation.mutate(formData)
+    }
+  }
+
+  const handleEdit = (record: Record) => {
+    setEditingId(record.id)
+    setFormData({
+      domain_pattern: record.domain_pattern,
+      record_type: record.record_type,
+      content: record.content,
+      ttl: record.ttl,
+    })
+    setShowForm(true)
+  }
+
+  const handleCancel = () => {
+    setShowForm(false)
+    setEditingId(null)
+    setFormData({ domain_pattern: '', record_type: 'A', content: '', ttl: 60 })
   }
 
   return (
@@ -59,7 +93,7 @@ function Records() {
         <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
           <button
             type="button"
-            onClick={() => setShowForm(!showForm)}
+            onClick={() => (showForm ? handleCancel() : setShowForm(true))}
             className="inline-flex items-center justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 sm:w-auto"
           >
             {showForm ? 'キャンセル' : '新規レコード追加'}
@@ -71,7 +105,7 @@ function Records() {
         <div className="mt-6 bg-white shadow sm:rounded-lg">
           <div className="px-4 py-5 sm:p-6">
             <h3 className="text-lg font-medium leading-6 text-gray-900">
-              新規レコード
+              {editingId !== null ? 'レコード編集' : '新規レコード'}
             </h3>
             <form onSubmit={handleSubmit} className="mt-5 space-y-4">
               <div>
@@ -134,13 +168,28 @@ function Records() {
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2 border"
                 />
               </div>
-              <button
-                type="submit"
-                disabled={createMutation.isPending}
-                className="inline-flex justify-center rounded-md border border-transparent bg-blue-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-              >
-                {createMutation.isPending ? '作成中...' : '作成'}
-              </button>
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  disabled={createMutation.isPending || updateMutation.isPending}
+                  className="inline-flex justify-center rounded-md border border-transparent bg-blue-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                >
+                  {editingId !== null
+                    ? updateMutation.isPending
+                      ? '更新中...'
+                      : '更新'
+                    : createMutation.isPending
+                    ? '作成中...'
+                    : '作成'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCancel}
+                  className="inline-flex justify-center rounded-md border border-gray-300 bg-white py-2 px-4 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                >
+                  キャンセル
+                </button>
+              </div>
             </form>
           </div>
         </div>
@@ -213,6 +262,12 @@ function Records() {
                           </button>
                         </td>
                         <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
+                          <button
+                            onClick={() => handleEdit(record)}
+                            className="text-blue-600 hover:text-blue-900 mr-4"
+                          >
+                            編集
+                          </button>
                           <button
                             onClick={() => deleteMutation.mutate(record.id)}
                             className="text-red-600 hover:text-red-900"

@@ -72,10 +72,20 @@ async fn run_migrations(pool: &DbPool) -> Result<()> {
 
     let migration_sql = include_str!("migration.sql");
 
+    // コメントを除去してからセミコロンで分割
+    let cleaned_sql: String = migration_sql
+        .lines()
+        .filter(|line| {
+            let trimmed = line.trim();
+            !trimmed.is_empty() && !trimmed.starts_with("--")
+        })
+        .collect::<Vec<&str>>()
+        .join("\n");
+
     // セミコロンで分割して各文を実行
-    for statement in migration_sql.split(';') {
+    for statement in cleaned_sql.split(';') {
         let statement = statement.trim();
-        if statement.is_empty() || statement.starts_with("--") {
+        if statement.is_empty() {
             continue;
         }
 

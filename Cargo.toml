@@ -41,6 +41,12 @@ chrono = "0.4"
 # 正規表現
 regex = "1.11"
 
+# 非同期トレイト
+async-trait = "0.1"
+
+# 乱数生成
+rand = "0.8"
+
 [dev-dependencies]
 # テスト用
 tokio-test = "0.4"
