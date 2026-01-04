@@ -45,3 +45,7 @@ web-ui/dist/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Development notes
+TODO.md
+IMPLEMENTATION_STATUS.md
