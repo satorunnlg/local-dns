@@ -61,8 +61,8 @@ function Settings() {
     <div className="px-4 py-6 sm:px-0">
       <div className="sm:flex sm:items-center">
         <div className="sm:flex-auto">
-          <h2 className="text-2xl font-bold">設定</h2>
-          <p className="mt-2 text-sm text-gray-700">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">設定</h2>
+          <p className="mt-2 text-sm text-gray-700 dark:text-gray-300">
             システム設定の変更が行えます
           </p>
         </div>
@@ -70,7 +70,7 @@ function Settings() {
 
       <div className="mt-8">
         {isLoading ? (
-          <div className="bg-white px-4 py-5 sm:px-6 text-center text-gray-500 rounded-lg shadow">
+          <div className="bg-white dark:bg-gray-800 px-4 py-5 sm:px-6 text-center text-gray-500 dark:text-gray-400 rounded-lg shadow transition-colors">
             読み込み中...
           </div>
         ) : settings && settings.length > 0 ? (
@@ -78,13 +78,13 @@ function Settings() {
             {settings.map((setting) => (
               <div
                 key={setting.key}
-                className="bg-white shadow sm:rounded-lg"
+                className="bg-white dark:bg-gray-800 shadow sm:rounded-lg transition-colors"
               >
                 <div className="px-4 py-5 sm:p-6">
-                  <h3 className="text-lg font-medium leading-6 text-gray-900">
+                  <h3 className="text-lg font-medium leading-6 text-gray-900 dark:text-white">
                     {getSettingLabel(setting.key)}
                   </h3>
-                  <div className="mt-2 max-w-xl text-sm text-gray-500">
+                  <div className="mt-2 max-w-xl text-sm text-gray-500 dark:text-gray-400">
                     <p>{getSettingDescription(setting.key)}</p>
                   </div>
                   <div className="mt-5 sm:flex sm:items-center">
@@ -102,7 +102,7 @@ function Settings() {
                             [setting.key]: e.target.value,
                           })
                         }
-                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2 border"
+                        className="block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2 border bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                       />
                     </div>
                     <button
@@ -112,12 +112,12 @@ function Settings() {
                         updateMutation.isPending ||
                         editValues[setting.key] === undefined
                       }
-                      className="mt-3 inline-flex w-full items-center justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
+                      className="mt-3 inline-flex w-full items-center justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
                     >
                       {updateMutation.isPending ? '保存中...' : '保存'}
                     </button>
                   </div>
-                  <div className="mt-2 text-sm text-gray-500">
+                  <div className="mt-2 text-sm text-gray-500 dark:text-gray-400">
                     現在の値: {setting.value}
                   </div>
                 </div>
@@ -125,7 +125,7 @@ function Settings() {
             ))}
           </div>
         ) : (
-          <div className="bg-white px-4 py-5 sm:px-6 text-center text-gray-500 rounded-lg shadow">
+          <div className="bg-white dark:bg-gray-800 px-4 py-5 sm:px-6 text-center text-gray-500 dark:text-gray-400 rounded-lg shadow transition-colors">
             設定がありません
           </div>
         )}
