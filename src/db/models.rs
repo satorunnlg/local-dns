@@ -36,6 +36,11 @@ impl Record {
     pub fn is_active(&self) -> bool {
         self.active == 1
     }
+
+    /// 完全一致パターンかどうか（ワイルドカードを含まない）
+    pub fn is_exact_match(&self) -> bool {
+        !self.domain_pattern.contains('%')
+    }
 }
 
 /// クエリログ

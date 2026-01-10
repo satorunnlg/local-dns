@@ -237,8 +237,7 @@ pub async fn get_recent_logs(pool: &DbPool, limit: i64) -> Result<Vec<QueryLog>>
     Ok(logs)
 }
 
-/// 古いログを削除（将来の定期実行用）
-#[allow(dead_code)]
+/// 古いログを削除（定期クリーンアップで使用）
 pub async fn cleanup_old_logs(pool: &DbPool, retention_days: i64) -> Result<u64> {
     let result = sqlx::query(
         "DELETE FROM query_logs WHERE timestamp < datetime('now', '-' || ? || ' days')"

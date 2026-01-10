@@ -43,6 +43,7 @@ impl RecordCache {
     }
 
     /// クエリ名に一致するレコードを検索
+    /// 完全一致を優先し、次にワイルドカードマッチを返す
     pub async fn find_matching_record(
         &self,
         query_name: &str,
@@ -50,13 +51,30 @@ impl RecordCache {
     ) -> Option<Record> {
         let records = self.records.read().await;
 
+        let mut wildcard_match: Option<&Record> = None;
+
         for record in records.iter() {
-            if record.record_type == record_type && record.matches(query_name) {
+            if record.record_type != record_type {
+                continue;
+            }
+
+            if !record.matches(query_name) {
+                continue;
+            }
+
+            // 完全一致（ワイルドカードを含まない）の場合は即座に返す
+            if record.is_exact_match() {
                 return Some(record.clone());
+            }
+
+            // ワイルドカードマッチは最初のものを保持
+            if wildcard_match.is_none() {
+                wildcard_match = Some(record);
             }
         }
 
-        None
+        // 完全一致がなければワイルドカードマッチを返す
+        wildcard_match.cloned()
     }
 
     /// キャッシュ内の全レコード数を取得（将来の統計機能用）
@@ -128,7 +146,7 @@ mod tests {
     async fn test_multiple_records_priority() {
         let cache = setup_test_cache().await;
 
-        // ワイルドカードレコード
+        // ワイルドカードレコード（先に追加）
         let req1 = CreateRecordRequest {
             domain_pattern: "%.local.test".to_string(),
             record_type: "A".to_string(),
@@ -148,15 +166,22 @@ mod tests {
 
         cache.reload().await.unwrap();
 
-        // 最初にマッチしたものが返される
+        // 完全一致が優先される（追加順序に関係なく）
         let record = cache
             .find_matching_record("app.local.test", "A")
             .await
             .unwrap();
 
-        // どちらかがマッチする（実装では最初にマッチしたものを返す）
-        assert!(
-            record.content == "127.0.0.1" || record.content == "192.168.1.1"
-        );
+        // 完全一致の 192.168.1.1 が返されるべき
+        assert_eq!(record.content, "192.168.1.1");
+
+        // ワイルドカードのみにマッチするクエリ
+        let record2 = cache
+            .find_matching_record("other.local.test", "A")
+            .await
+            .unwrap();
+
+        // ワイルドカードの 127.0.0.1 が返される
+        assert_eq!(record2.content, "127.0.0.1");
     }
 }

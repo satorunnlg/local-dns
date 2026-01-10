@@ -131,8 +131,8 @@ impl UpstreamResolver {
                 // リクエスト送信
                 socket.send(&request_bytes).await?;
 
-                // レスポンス受信
-                let mut response_bytes = vec![0u8; 512];
+                // レスポンス受信（EDNSの最大サイズを考慮して4096バイト）
+                let mut response_bytes = vec![0u8; 4096];
                 let len = socket.recv(&mut response_bytes).await?;
                 response_bytes.truncate(len);
 

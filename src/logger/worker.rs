@@ -1,6 +1,7 @@
-use crate::db::{log_query, DbPool, NewQueryLog};
+use crate::db::{cleanup_old_logs, get_setting, log_query, DbPool, NewQueryLog};
+use std::time::Duration;
 use tokio::sync::mpsc;
-use tracing::{debug, error};
+use tracing::{debug, error, info};
 
 /// クエリログメッセージ
 #[derive(Debug, Clone)]
@@ -10,6 +11,9 @@ pub struct QueryLogMessage {
     pub result_type: String,
     pub duration_ms: i64,
 }
+
+/// ログクリーンアップのデフォルト間隔（1時間）
+const CLEANUP_INTERVAL_SECS: u64 = 3600;
 
 /// 非同期ログワーカー
 pub struct LogWorker {
@@ -22,8 +26,14 @@ impl LogWorker {
         let (sender, receiver) = mpsc::unbounded_channel();
 
         // バックグラウンドでログ書き込みタスクを起動
+        let pool_for_writer = pool.clone();
         tokio::spawn(async move {
-            Self::run_worker(pool, receiver).await;
+            Self::run_worker(pool_for_writer, receiver).await;
+        });
+
+        // バックグラウンドでログクリーンアップタスクを起動
+        tokio::spawn(async move {
+            Self::run_cleanup_worker(pool).await;
         });
 
         Self { sender }
@@ -59,6 +69,39 @@ impl LogWorker {
         }
 
         debug!("ログワーカー終了");
+    }
+
+    /// 定期的に古いログをクリーンアップ
+    async fn run_cleanup_worker(pool: DbPool) {
+        info!("ログクリーンアップワーカー起動");
+
+        loop {
+            // 設定から保存期間を取得
+            let retention_days = match get_setting(&pool, "log_retention_days").await {
+                Ok(Some(value)) => value.parse().unwrap_or(7),
+                _ => 7, // デフォルト7日
+            };
+
+            // 古いログを削除
+            match cleanup_old_logs(&pool, retention_days).await {
+                Ok(deleted_count) => {
+                    if deleted_count > 0 {
+                        info!(
+                            "古いログをクリーンアップ: {} 件削除 (保存期間: {} 日)",
+                            deleted_count, retention_days
+                        );
+                    } else {
+                        debug!("クリーンアップ対象のログなし");
+                    }
+                }
+                Err(e) => {
+                    error!("ログクリーンアップ失敗: {}", e);
+                }
+            }
+
+            // 次のクリーンアップまで待機
+            tokio::time::sleep(Duration::from_secs(CLEANUP_INTERVAL_SECS)).await;
+        }
     }
 }
 
