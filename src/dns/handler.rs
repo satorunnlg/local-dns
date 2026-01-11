@@ -155,6 +155,7 @@ impl RequestHandler for DnsHandler {
 mod tests {
     use super::*;
     use crate::db::{create_record, init_db, CreateRecordRequest};
+    use crate::dns::upstream::UpstreamConfig;
 
     #[tokio::test]
     async fn test_dns_handler_cache_hit() {
@@ -178,5 +179,45 @@ mod tests {
         let _handler = DnsHandler::new(cache, log_worker);
 
         // 実際のDNS問い合わせテストは統合テストで実施
+    }
+
+    #[tokio::test]
+    async fn test_dns_handler_with_upstream() {
+        let pool = init_db("sqlite::memory:").await.unwrap();
+        let cache = RecordCache::new(pool.clone()).await.unwrap();
+        let log_worker = LogWorker::new(pool.clone());
+
+        let config = UpstreamConfig::new("8.8.8.8:53", "1.1.1.1:53", 2000).unwrap();
+        let upstream = UpstreamResolver::new(config);
+
+        let handler = DnsHandler::new(cache, log_worker).with_upstream(upstream);
+
+        // 上位転送が設定されていることを確認
+        assert!(handler.upstream.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_dns_handler_without_upstream() {
+        let pool = init_db("sqlite::memory:").await.unwrap();
+        let cache = RecordCache::new(pool.clone()).await.unwrap();
+        let log_worker = LogWorker::new(pool.clone());
+
+        let handler = DnsHandler::new(cache, log_worker);
+
+        // 上位転送が設定されていないことを確認
+        assert!(handler.upstream.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_dns_handler_clone() {
+        let pool = init_db("sqlite::memory:").await.unwrap();
+        let cache = RecordCache::new(pool.clone()).await.unwrap();
+        let log_worker = LogWorker::new(pool.clone());
+
+        let handler = DnsHandler::new(cache, log_worker);
+        let cloned = handler.clone();
+
+        // クローンが正常に動作することを確認
+        assert!(cloned.upstream.is_none());
     }
 }

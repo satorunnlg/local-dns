@@ -375,4 +375,112 @@ mod tests {
         let primary = get_setting(&pool, "upstream_primary").await.unwrap();
         assert_eq!(primary, Some("1.1.1.1:53".to_string()));
     }
+
+    #[tokio::test]
+    async fn test_log_query_and_get_recent() {
+        let pool = setup_test_db().await;
+
+        // ログ記録
+        log_query(
+            &pool,
+            NewQueryLog {
+                query_name: "test.local".to_string(),
+                q_type: "A".to_string(),
+                result_type: "LOCAL".to_string(),
+                duration_ms: 5,
+            },
+        )
+        .await
+        .unwrap();
+
+        log_query(
+            &pool,
+            NewQueryLog {
+                query_name: "google.com".to_string(),
+                q_type: "A".to_string(),
+                result_type: "FORWARDED".to_string(),
+                duration_ms: 25,
+            },
+        )
+        .await
+        .unwrap();
+
+        // ログ取得
+        let logs = get_recent_logs(&pool, 10).await.unwrap();
+        assert_eq!(logs.len(), 2);
+
+        // 最新のログが先頭
+        assert_eq!(logs[0].query_name, "google.com");
+        assert_eq!(logs[1].query_name, "test.local");
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_old_logs() {
+        let pool = setup_test_db().await;
+
+        // ログ記録（現在の時刻）
+        log_query(
+            &pool,
+            NewQueryLog {
+                query_name: "recent.local".to_string(),
+                q_type: "A".to_string(),
+                result_type: "LOCAL".to_string(),
+                duration_ms: 1,
+            },
+        )
+        .await
+        .unwrap();
+
+        // 古いログを手動で挿入（8日前）
+        sqlx::query(
+            "INSERT INTO query_logs (query_name, q_type, result_type, duration_ms, timestamp)
+             VALUES (?, ?, ?, ?, datetime('now', '-8 days'))",
+        )
+        .bind("old.local")
+        .bind("A")
+        .bind("LOCAL")
+        .bind(1)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        // クリーンアップ前は2件
+        let logs = get_recent_logs(&pool, 10).await.unwrap();
+        assert_eq!(logs.len(), 2);
+
+        // 7日より古いログを削除
+        let deleted = cleanup_old_logs(&pool, 7).await.unwrap();
+        assert_eq!(deleted, 1);
+
+        // クリーンアップ後は1件
+        let logs = get_recent_logs(&pool, 10).await.unwrap();
+        assert_eq!(logs.len(), 1);
+        assert_eq!(logs[0].query_name, "recent.local");
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_old_logs_no_old_logs() {
+        let pool = setup_test_db().await;
+
+        // 新しいログのみ記録
+        log_query(
+            &pool,
+            NewQueryLog {
+                query_name: "fresh.local".to_string(),
+                q_type: "A".to_string(),
+                result_type: "LOCAL".to_string(),
+                duration_ms: 1,
+            },
+        )
+        .await
+        .unwrap();
+
+        // 削除対象なし
+        let deleted = cleanup_old_logs(&pool, 7).await.unwrap();
+        assert_eq!(deleted, 0);
+
+        // ログは残っている
+        let logs = get_recent_logs(&pool, 10).await.unwrap();
+        assert_eq!(logs.len(), 1);
+    }
 }

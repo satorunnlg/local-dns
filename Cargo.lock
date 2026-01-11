@@ -1049,6 +1049,8 @@ dependencies = [
  "hickory-client",
  "hickory-proto",
  "hickory-server",
+ "http-body-util",
+ "hyper",
  "include_dir",
  "rand 0.8.5",
  "regex",

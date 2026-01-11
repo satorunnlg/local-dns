@@ -246,3 +246,472 @@ impl IntoResponse for AppError {
         (status, Json(json!({ "error": message }))).into_response()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::init_db;
+    use crate::dns::RecordCache;
+    use axum::body::Body;
+    use axum::http::Request;
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    /// テスト用のAPIステートを作成
+    async fn setup_test_api() -> Router {
+        let pool = init_db("sqlite::memory:").await.unwrap();
+        let cache = RecordCache::new(pool.clone()).await.unwrap();
+        let state = ApiState { pool, cache };
+        create_api_routes(state)
+    }
+
+    #[tokio::test]
+    async fn test_health_check() {
+        let app = setup_test_api().await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/health")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["status"], "ok");
+        assert_eq!(json["service"], "local-dns-pro");
+    }
+
+    #[tokio::test]
+    async fn test_get_records_empty() {
+        let app = setup_test_api().await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/records")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let json: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+        assert!(json.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_create_and_get_record() {
+        let pool = init_db("sqlite::memory:").await.unwrap();
+        let cache = RecordCache::new(pool.clone()).await.unwrap();
+        let state = ApiState {
+            pool: pool.clone(),
+            cache,
+        };
+        let app = create_api_routes(state);
+
+        // レコード作成
+        let create_body = serde_json::json!({
+            "domain_pattern": "app.local.test",
+            "record_type": "A",
+            "content": "192.168.1.100",
+            "ttl": 60
+        });
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/records")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(create_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let id = json["id"].as_i64().unwrap();
+        assert!(id > 0);
+
+        // レコード取得
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/api/records/{}", id))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let record: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(record["domain_pattern"], "app.local.test");
+        assert_eq!(record["record_type"], "A");
+        assert_eq!(record["content"], "192.168.1.100");
+    }
+
+    #[tokio::test]
+    async fn test_create_record_validation_empty_domain() {
+        let app = setup_test_api().await;
+
+        let create_body = serde_json::json!({
+            "domain_pattern": "",
+            "record_type": "A",
+            "content": "192.168.1.100",
+            "ttl": 60,
+                    });
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/records")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(create_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_create_record_validation_invalid_ip() {
+        let app = setup_test_api().await;
+
+        let create_body = serde_json::json!({
+            "domain_pattern": "app.local.test",
+            "record_type": "A",
+            "content": "invalid-ip",
+            "ttl": 60,
+                    });
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/records")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(create_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_create_record_validation_invalid_type() {
+        let app = setup_test_api().await;
+
+        let create_body = serde_json::json!({
+            "domain_pattern": "app.local.test",
+            "record_type": "MX",
+            "content": "mail.example.com",
+            "ttl": 60,
+                    });
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/records")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(create_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_create_record_validation_invalid_ttl() {
+        let app = setup_test_api().await;
+
+        let create_body = serde_json::json!({
+            "domain_pattern": "app.local.test",
+            "record_type": "A",
+            "content": "192.168.1.100",
+            "ttl": 0,
+                    });
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/records")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(create_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_get_record_not_found() {
+        let app = setup_test_api().await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/records/99999")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_delete_record() {
+        let pool = init_db("sqlite::memory:").await.unwrap();
+        let cache = RecordCache::new(pool.clone()).await.unwrap();
+        let state = ApiState {
+            pool: pool.clone(),
+            cache,
+        };
+        let app = create_api_routes(state);
+
+        // レコード作成
+        let create_body = serde_json::json!({
+            "domain_pattern": "delete.local.test",
+            "record_type": "A",
+            "content": "10.0.0.1",
+            "ttl": 60
+        });
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/records")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(create_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let id = json["id"].as_i64().unwrap();
+
+        // レコード削除
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(format!("/api/records/{}", id))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // 削除後に取得 → NotFound
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/api/records/{}", id))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_get_settings() {
+        let app = setup_test_api().await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/settings")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let settings: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+
+        // 初期設定が存在することを確認
+        let keys: Vec<&str> = settings
+            .iter()
+            .filter_map(|s| s["key"].as_str())
+            .collect();
+        assert!(keys.contains(&"upstream_primary"));
+        assert!(keys.contains(&"upstream_secondary"));
+    }
+
+    #[tokio::test]
+    async fn test_update_setting() {
+        let pool = init_db("sqlite::memory:").await.unwrap();
+        let cache = RecordCache::new(pool.clone()).await.unwrap();
+        let state = ApiState {
+            pool: pool.clone(),
+            cache,
+        };
+        let app = create_api_routes(state);
+
+        // 設定更新
+        let update_body = serde_json::json!({
+            "value": "9.9.9.9:53"
+        });
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri("/api/settings/upstream_primary")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(update_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // 更新後の設定を確認
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/settings")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let settings: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+
+        let primary = settings
+            .iter()
+            .find(|s| s["key"] == "upstream_primary")
+            .unwrap();
+        assert_eq!(primary["value"], "9.9.9.9:53");
+    }
+
+    #[tokio::test]
+    async fn test_get_logs_empty() {
+        let app = setup_test_api().await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/logs")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let logs: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+        assert!(logs.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_validate_record_ipv6() {
+        // 有効なIPv6
+        let req = CreateRecordRequest {
+            domain_pattern: "app.local.test".to_string(),
+            record_type: "AAAA".to_string(),
+            content: "::1".to_string(),
+            ttl: 60,
+        };
+        assert!(validate_record(&req).is_ok());
+
+        // 無効なIPv6
+        let req = CreateRecordRequest {
+            domain_pattern: "app.local.test".to_string(),
+            record_type: "AAAA".to_string(),
+            content: "invalid-ipv6".to_string(),
+            ttl: 60,
+        };
+        assert!(validate_record(&req).is_err());
+    }
+
+    #[tokio::test]
+    async fn test_validate_record_cname() {
+        // 有効なCNAME
+        let req = CreateRecordRequest {
+            domain_pattern: "alias.local.test".to_string(),
+            record_type: "CNAME".to_string(),
+            content: "target.local.test".to_string(),
+            ttl: 60,
+        };
+        assert!(validate_record(&req).is_ok());
+
+        // 空白を含むCNAME（無効）
+        let req = CreateRecordRequest {
+            domain_pattern: "alias.local.test".to_string(),
+            record_type: "CNAME".to_string(),
+            content: "invalid target".to_string(),
+            ttl: 60,
+        };
+        assert!(validate_record(&req).is_err());
+    }
+
+    #[tokio::test]
+    async fn test_validate_record_empty_content() {
+        let req = CreateRecordRequest {
+            domain_pattern: "app.local.test".to_string(),
+            record_type: "A".to_string(),
+            content: "   ".to_string(),
+            ttl: 60,
+        };
+        assert!(validate_record(&req).is_err());
+    }
+
+    #[tokio::test]
+    async fn test_validate_record_ttl_too_high() {
+        let req = CreateRecordRequest {
+            domain_pattern: "app.local.test".to_string(),
+            record_type: "A".to_string(),
+            content: "192.168.1.1".to_string(),
+            ttl: 100000,
+        };
+        assert!(validate_record(&req).is_err());
+    }
+}

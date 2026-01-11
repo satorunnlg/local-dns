@@ -50,6 +50,9 @@ rand = "0.8"
 [dev-dependencies]
 # テスト用
 tokio-test = "0.4"
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+hyper = "1.0"
 
 [profile.release]
 lto = true
