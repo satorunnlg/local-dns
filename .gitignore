@@ -35,6 +35,9 @@ yarn-error.log*
 # React build
 web-ui/dist/
 
+# Test coverage
+web-ui/coverage/
+
 # IDE
 .vscode/
 *.swp
