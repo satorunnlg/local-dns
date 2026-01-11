@@ -1,5 +1,9 @@
 # LocalDNS Pro
 
+![Rust](https://img.shields.io/badge/Rust-1.70%2B-orange?logo=rust)
+![License](https://img.shields.io/badge/License-MIT-blue)
+![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-lightgrey)
+
 ローカル開発環境用のハイブリッドDNSサーバー
 
 ## 概要
