@@ -49,3 +49,8 @@ desktop.ini
 # Development notes
 TODO.md
 IMPLEMENTATION_STATUS.md
+
+# Claude Code
+.claude/
+CLAUDE.md
+DESIGN.md
