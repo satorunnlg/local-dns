@@ -102,7 +102,7 @@ impl UpstreamResolver {
         name: &Name,
         rtype: RecordType,
     ) -> Result<Vec<hickory_proto::rr::Record>> {
-        use hickory_proto::op::{Message, MessageType};
+        use hickory_proto::op::{Message, MessageType, OpCode};
         use hickory_proto::serialize::binary::BinDecodable;
         use tokio::net::UdpSocket;
 
@@ -111,12 +111,9 @@ impl UpstreamResolver {
         socket.connect(server).await?;
 
         // DNS問い合わせメッセージを作成
-        let mut message = Message::new();
         let id = rand::random::<u16>();
-        message.set_id(id);
-        message.set_message_type(MessageType::Query);
-        message.set_op_code(hickory_proto::op::OpCode::Query);
-        message.set_recursion_desired(true);
+        let mut message = Message::new(id, MessageType::Query, OpCode::Query);
+        message.metadata.recursion_desired = true;
 
         let query = Query::query(name.clone(), rtype);
         message.add_query(query);
@@ -145,7 +142,7 @@ impl UpstreamResolver {
         .context("上位DNSへの問い合わせがタイムアウト")??;
 
         // レスポンスから答えを抽出
-        Ok(result.answers().to_vec())
+        Ok(result.answers)
     }
 }
 

@@ -6,7 +6,7 @@ mod web;
 use anyhow::{Context, Result};
 use db::init_db;
 use dns::{upstream::UpstreamResolver, DnsHandler, RecordCache, UpstreamConfig};
-use hickory_server::ServerFuture;
+use hickory_server::Server;
 use logger::LogWorker;
 use std::net::SocketAddr;
 use tokio::net::{TcpListener as TokioTcpListener, UdpSocket};
@@ -95,10 +95,11 @@ async fn run() -> Result<()> {
         .context("DNSサーバー(TCP)のバインドに失敗")?;
     info!("DNSサーバー(TCP)起動: {}", dns_addr);
 
-    // hickory-server の ServerFuture 作成
-    let mut dns_server = ServerFuture::new(dns_handler);
+    // hickory-server の Server 作成（0.26 で ServerFuture から改名）
+    let mut dns_server = Server::new(dns_handler);
     dns_server.register_socket(udp_socket);
-    dns_server.register_listener(tcp_listener, std::time::Duration::from_secs(5));
+    // 第3引数は接続ごとの送信バッファ（0.25 までの既定値 32 を明示）
+    dns_server.register_listener(tcp_listener, std::time::Duration::from_secs(5), 32);
 
     // Web API状態
     let api_state = ApiState {

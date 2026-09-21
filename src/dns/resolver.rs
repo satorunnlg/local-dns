@@ -110,10 +110,10 @@ mod tests {
         };
 
         let dns_record = build_dns_record(&query_name, &record).unwrap();
-        assert_eq!(dns_record.name(), &query_name);
-        assert_eq!(dns_record.ttl(), 60);
+        assert_eq!(dns_record.name, query_name);
+        assert_eq!(dns_record.ttl, 60);
 
-        if let RData::A(ip) = dns_record.data() {
+        if let RData::A(ip) = &dns_record.data {
             assert_eq!(ip.to_string(), "127.0.0.1");
         } else {
             panic!("Expected A record");
@@ -134,7 +134,7 @@ mod tests {
 
         let dns_record = build_dns_record(&query_name, &record).unwrap();
 
-        if let RData::AAAA(ip) = dns_record.data() {
+        if let RData::AAAA(ip) = &dns_record.data {
             assert_eq!(ip.to_string(), "::1");
         } else {
             panic!("Expected AAAA record");
@@ -155,7 +155,7 @@ mod tests {
 
         let dns_record = build_dns_record(&query_name, &record).unwrap();
 
-        if let RData::CNAME(cname) = dns_record.data() {
+        if let RData::CNAME(cname) = &dns_record.data {
             // hickory-serverのCNAMEは末尾にドットを付けない
             let target_str = cname.0.to_string();
             assert!(

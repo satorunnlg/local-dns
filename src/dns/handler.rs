@@ -1,9 +1,10 @@
 use crate::dns::{build_dns_record, upstream::UpstreamResolver, RecordCache};
 use crate::logger::worker::{LogWorker, QueryLogMessage};
-use hickory_server::authority::MessageResponseBuilder;
-use hickory_server::proto::op::{Header, MessageType, OpCode, ResponseCode};
+use hickory_server::net::runtime::Time;
+use hickory_server::proto::op::{Header, HeaderCounts, MessageType, Metadata, OpCode, ResponseCode};
 use hickory_server::proto::rr::Record as DnsRecord;
 use hickory_server::server::{Request, RequestHandler, ResponseHandler, ResponseInfo};
+use hickory_server::zone_handler::MessageResponseBuilder;
 use std::sync::Arc;
 use std::time::Instant;
 use tracing::{debug, warn};
@@ -109,19 +110,19 @@ impl DnsHandler {
 
 #[async_trait::async_trait]
 impl RequestHandler for DnsHandler {
-    async fn handle_request<R: ResponseHandler>(
+    async fn handle_request<R: ResponseHandler, T: Time>(
         &self,
         request: &Request,
         mut response_handle: R,
     ) -> ResponseInfo {
-        // ヘッダー取得
-        let mut header = Header::response_from_request(request.header());
+        // ヘッダー取得（hickory 0.26: ヘッダーのフラグ類は Metadata に分離された）
+        let mut metadata = Metadata::response_from_request(&request.metadata);
 
         // クエリタイプチェック
-        if request.op_code() != OpCode::Query {
-            header.set_response_code(ResponseCode::NotImp);
+        if request.metadata.op_code != OpCode::Query {
+            metadata.response_code = ResponseCode::NotImp;
             let response = MessageResponseBuilder::from_message_request(request)
-                .build_no_records(header);
+                .build_no_records(metadata);
             return response_handle.send_response(response).await.unwrap();
         }
 
@@ -129,23 +130,29 @@ impl RequestHandler for DnsHandler {
         let answers = self.handle_query(request).await;
 
         // レスポンス構築
-        header.set_response_code(if answers.is_empty() {
+        metadata.response_code = if answers.is_empty() {
             ResponseCode::NXDomain
         } else {
             ResponseCode::NoError
-        });
+        };
 
         let response = MessageResponseBuilder::from_message_request(request)
-            .build(header, answers.iter(), &[], &[], &[]);
+            .build(metadata, answers.iter(), &[], &[], &[]);
 
         match response_handle.send_response(response).await {
             Ok(info) => info,
             Err(e) => {
                 warn!("レスポンス送信失敗: {}", e);
-                let mut header = Header::new();
-                header.set_message_type(MessageType::Response);
-                header.set_response_code(ResponseCode::ServFail);
-                ResponseInfo::from(header)
+                let mut metadata = Metadata::new(
+                    request.metadata.id,
+                    MessageType::Response,
+                    request.metadata.op_code,
+                );
+                metadata.response_code = ResponseCode::ServFail;
+                ResponseInfo::from(Header {
+                    metadata,
+                    counts: HeaderCounts::default(),
+                })
             }
         }
     }
